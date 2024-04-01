@@ -72,8 +72,26 @@ int main (int argc, char *argv[]) {
 
 	// processor model
 	uint32_t pc_curr, pc_next;	// program counter
+
+	// IF
 	struct imem_input_t imem_in;
 	struct imem_output_t imem_out;
+
+	// ID
+	struct regfile_input_t regfile_in;
+	struct regfile_output_t regfile_out;
+	uint8_t opcode;
+	uint8_t func3;
+	uint8_t func7;
+	uint32_t imm;
+
+	// EX
+	struct alu_input_t alu_in;
+	struct alu_output_t alu_out;
+
+	// MEM
+	struct dmem_input_t dmem_in;
+	struct dmem_output_t dmem_out;
 
 	// pipeline registers
 	struct pipe_if_id_t id;
@@ -83,21 +101,219 @@ int main (int argc, char *argv[]) {
 
 	uint32_t cc = 2;	// clock count
 	while (cc < CLK_NUM) {
+		printf("\n*** CLK : %d ***\n", cc);
+
+
+
+
+
+
+		// Program counter
+		pc_next = pc_curr + 4;
+
+		if(opcode == SB_TYPE){
+			uint8_t pc_next_sel = 0;
+			uint32_t r1 = regfile_out.rs1_dout;
+			uint32_t r2 = regfile_out.rs2_dout;
+
+			switch(func3){
+				case F3_BEQ:
+					pc_next_sel = alu_out.zero ? 1 : 0;
+					break;
+				case F3_BNE:
+					pc_next_sel = alu_out.zero ? 0 : 1;
+					break;
+				case F3_BLT:
+					pc_next_sel = (!alu_out.zero && alu_out.sign) ? 1 : 0;
+					break;
+				case F3_BGE:
+					pc_next_sel = (alu_out.zero || !alu_out.sign) ? 1 : 0;
+					break;
+				case F3_BLTU:
+					pc_next_sel = (!alu_out.zero && alu_out.ucmp) ? 1 : 0;
+					break;
+				case F3_BGEU:
+					pc_next_sel = (alu_out.zero || !alu_out.ucmp) ? 1 : 0;
+					break;
+			}
+			if(pc_next_sel){
+				pc_next = pc_curr + (int32_t)imm;
+				D_PRINTF("PC", "Take branch");
+			}
+		}
+		else if(opcode == UJ_TYPE)
+			pc_next = pc_curr + (int32_t)imm;
+		else if(opcode == I_J_TYPE)
+			pc_next = alu_out.result;
+
 
 		// write back stage
+		if(!(opcode == SB_TYPE || opcode == S_TYPE)){
+			if(opcode == UJ_TYPE || opcode == I_J_TYPE)
+				regfile_in.rd_din = pc_curr + 4;
+			else if(opcode == U_LU_TYPE)
+				regfile_in.rd_din = imm;
+			else if(opcode == U_AU_TYPE)
+				regfile_in.rd_din = pc_curr + imm;
+			else if(opcode == R_TYPE || opcode == I_R_TYPE){
+				if(func3 == F3_SLT){
+					regfile_in.rd_din = alu_out.sign ? 1 : 0;
+				}
+				else if(func3 == F3_SLTU){
+					regfile_in.rd_din = alu_out.ucmp ? 1 : 0;
+				}
+				else
+					regfile_in.rd_din = alu_out.result;
+			}
+			else if(opcode == I_L_TYPE){
+				regfile_in.rd_din = dmem_out.dout;
+			}
+			else
+				regfile_in.rd_din = alu_out.result;
+
+			D_PRINTF("WB", "[I]rd - %d",regfile_in.rd);
+			D_PRINTF("WB", "[I]rd_din - %d",regfile_in.rd_din);
+
+			regfile_out = regfile(regfile_in, reg_data, WRITE);
+		}
 
 
 		// memory stage
+		if(opcode == S_TYPE || opcode == I_L_TYPE || opcode == I_J_TYPE){
+			dmem_in.addr = alu_out.result;
+			D_PRINTF("MEM", "[I]addr - %x", dmem_in.addr);
+			dmem_in.din = regfile_out.rs2_dout;
+			D_PRINTF("MEM", "[I]din - %x", dmem_in.din);
+			dmem_in.func3 = func3;
+			D_PRINTF("MEM", "[I]func - %x", dmem_in.func3);
+
+			if(opcode == S_TYPE){
+				dmem_in.mem_write = 1;
+				dmem_in.mem_read = 0;
+			}
+			else if(opcode == I_L_TYPE){
+				dmem_in.mem_read = 1;
+				dmem_in.mem_write = 0;
+			}
+			else{
+				dmem_in.mem_read = 0;
+				dmem_in.mem_write = 0;
+			}
+
+			dmem_out = dmem(dmem_in, dmem_data);
+		}
 
 
 		// execution stage
+		alu_in.alu_control = alu_control_gen(opcode, func3, func7);
+
+		D_PRINTF("EX", "[I]in1 - %d", alu_in.in1);
+		D_PRINTF("EX", "[I]in2 - %d", (int32_t) alu_in.in2);
+		D_PRINTF("EX", "[I]alu_cont - %x", alu_in.alu_control);
+
+		alu_out = alu(alu_in);
+
+		D_PRINTF("EX", "[I]result - %d", alu_out.result);
+		D_PRINTF("EX", "[I]zero - %d", alu_out.zero);
+		D_PRINTF("EX", "[I]sign - %d", alu_out.sign);
 
 
 		// instruction decode stage
+		opcode = imem_out.dout & 0x7F;
+
+		if (!(opcode == U_LU_TYPE || opcode == U_AU_TYPE ||opcode == UJ_TYPE))
+			func3 = (imem_out.dout >> 12) & 0x7;
+		if (opcode == R_TYPE)
+			func7 = (imem_out.dout >> 25) & 0x7F;
+
+		regfile_in.rs1 = (imem_out.dout >> 15) & 0x1F;
+		D_PRINTF("ID", "[I]rs1 - %d", regfile_in.rs1);
+		regfile_in.rd = (imem_out.dout >> 7) & 0x1F;
+		D_PRINTF("ID", "[I]rd - %d", regfile_in.rd);
+
+		if (opcode == SB_TYPE || opcode == R_TYPE || opcode == S_TYPE){
+			regfile_in.rs2 = (imem_out.dout >> 20) & 0x1F;
+			D_PRINTF("ID", "[I]rs2 - %d", regfile_in.rs2);
+		}
+
+		regfile_out = regfile(regfile_in, reg_data, READ);
+
+		D_PRINTF("ID", "[O]rs1_dout - %d", regfile_out.rs1_dout);
+		if (opcode == SB_TYPE || opcode == R_TYPE || opcode == S_TYPE)
+		D_PRINTF("ID", "[O]rs2_dout - %d", regfile_out.rs2_dout);
+		
+		alu_in.in1 = regfile_out.rs1_dout;
+
+		//Immediate generation
+		if (opcode == I_L_TYPE || opcode == I_R_TYPE || opcode == I_J_TYPE){
+			alu_in.in2 = (imem_out.dout >> 20) & 0xFFF;
+			//Input is a negative number
+			if(alu_in.in2 & 0x800)
+				alu_in.in2 = alu_in.in2 | 0xFFFFF000;
+		}
+		else if (opcode == U_LU_TYPE || opcode == U_AU_TYPE)
+			imm = imem_out.dout & ~0xFFF;
+		else if (opcode == UJ_TYPE){
+			imm = 0;
+
+			imm = imm | ((imem_out.dout >> 31) & 0x1) << 20;
+			imm = imm | ((imem_out.dout >> 21) & 0x3FF) << 1;
+			imm = imm | ((imem_out.dout >> 20) & 0x1) << 11;
+			imm = imm | (imem_out.dout & 0xFF000);
+
+			//Input is a negative number
+			if(imm & 0x100000)
+				imm = imm | 0xFFE00000;
+		}
+		else if (opcode == SB_TYPE){
+			imm = 0;
+
+			imm = imm | ((imem_out.dout >> 31) & 0x1) << 12;
+			imm = imm | ((imem_out.dout >> 25) & 0x3F) << 5;
+			imm = imm | ((imem_out.dout >> 8) & 0xF) << 1;
+			imm = imm | ((imem_out.dout >> 7) & 0x1) << 11;
+			//Input is a negative number
+			if(imm & 0x1000)
+				imm = imm | 0xFFFFE000;
+
+			alu_in.in2 = regfile_out.rs2_dout;
+		}
+		else if (opcode == S_TYPE){
+			imm = 0;
+
+			imm = imm | ((imem_out.dout >> 7) & 0x1F);
+			imm = imm | ((imem_out.dout >> 25) & 0x7F) << 5;
+			//Input is a negative number
+			if(imm & 0x800)
+				imm = imm | 0xFFFFF000;
+			alu_in.in2 = imm;
+		}
+		else
+			alu_in.in2 = regfile_out.rs2_dout;
 
 
 		// instruction fetch stage
+		pc_curr = pc_next;
+		imem_in.addr = pc_curr;
 
+		imem_out = imem(imem_in, imem_data);
+		// no more instruction
+		if(!imem_out.dout)
+			break;
+		D_PRINTF("IF", "addr - 0x%08X", imem_in.addr);
+		D_PRINTF("IF", "dout - 0x%08X", imem_out.dout);
+
+		//for(int i = 0; i < REG_WIDTH; i++){
+		for(int i = 0; i < 20; i++){
+			printf("reg[%02d]: %08X\n", i, reg_data[i]);
+		}
+		printf("\n");
+		for(int i = 0; i < 40; i += 4){
+			printf("dmem[%02d]: ", i);
+			for(int j = 3; j >= 0; j--)
+				printf("%02X", dmem_data[i+j]);
+			printf("\n");
+		}
 		
 		cc++;
 	}
