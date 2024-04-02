@@ -47,17 +47,17 @@ int main (int argc, char *argv[]) {
 	// memory data (global)
 	uint32_t *reg_data;
 	uint32_t *imem_data;
-	uint32_t *dmem_data;
+	uint8_t *dmem_data;
 
 	reg_data = (uint32_t*)malloc(32*sizeof(uint32_t));
 	imem_data = (uint32_t*)malloc(IMEM_DEPTH*sizeof(uint32_t));
-	dmem_data = (uint32_t*)malloc(DMEM_DEPTH*sizeof(uint32_t));
+	dmem_data = (uint8_t*)malloc(DMEM_DEPTH*sizeof(uint32_t));
 
 	// initialize memory data
 	int i, j, k;
 	for (i = 0; i < 32; i++) reg_data[i] = 0;
 	for (i = 0; i < IMEM_DEPTH; i++) imem_data[i] = 0;
-	for (i = 0; i < DMEM_DEPTH; i++) dmem_data[i] = 0;
+	for (i = 0; i < DMEM_DEPTH*WORD_SIZE; i++) dmem_data[i] = 0;
 
 	uint32_t d, buf;
 	i = 0;
@@ -80,9 +80,15 @@ int main (int argc, char *argv[]) {
 	i = 0;
 	printf("\n*** Reading %s ***\n", argv[2]);
 	while (fscanf(f_dmem, "%8x", &buf) != EOF) {
-		dmem_data[i] = buf;
-		printf("dmem[%03d]: %08X\n", i, dmem_data[i]);
-		i++;
+		printf("dmem[%03d]: ", i);
+		for(int j = 0; j < WORD_SIZE; j++){
+			dmem_data[i+j] = (buf & (0xFF << j*BYTE_BIT)) >> j*BYTE_BIT;
+		}
+		for(int j = WORD_SIZE-1; j >= 0; j--){
+			printf("%02X", dmem_data[i+j]);
+		}
+		printf("\n");
+		i += WORD_SIZE;
 	}
 
 	fclose(f_imem);
