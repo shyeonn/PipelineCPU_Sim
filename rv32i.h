@@ -127,17 +127,51 @@ struct dmem_output_t {
 
 // structures for pipeline registers
 struct pipe_if_id_t {
+    //From IF
+    uint32_t pc_curr;
+    struct imem_output_t imem_out;
 
 };
 
 struct pipe_id_ex_t {
+    //From IF
+    uint32_t pc_curr;
+
+    //From ID
+    uint8_t opcode;
+	uint32_t imm;
+	uint8_t func3;
+	uint8_t func7;
+    struct alu_input_t alu_in;
 	
 };
 
 struct pipe_ex_mem_t {
+    //From IF
+    uint32_t pc_curr;
 
+    //From ID
+    uint8_t opcode;
+	uint32_t imm;
+	uint8_t func3;
+    struct regfile_output_t regfile_out;
+
+    //From EX
+    struct alu_output_t alu_out; 
 };
 
 struct pipe_mem_wb_t {
+    //From IF
+    uint32_t pc_curr;
 
+    //From ID
+    uint8_t opcode;
+	uint32_t imm;
+	uint8_t func3;
+
+    //From EX
+    struct alu_output_t alu_out; 
+
+    //From MEM
+    struct dmem_output_t dmem_out;
 };
