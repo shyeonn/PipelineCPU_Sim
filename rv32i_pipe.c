@@ -103,46 +103,10 @@ int main (int argc, char *argv[]) {
 	while (cc < CLK_NUM) {
 		printf("\n*** CLK : %d ***\n", cc);
 
-		// Program counter
-		pc_next = pc_curr + 4;
-
-		if(opcode == SB_TYPE){
-			uint8_t pc_next_sel = 0;
-			uint32_t r1 = regfile_out.rs1_dout;
-			uint32_t r2 = regfile_out.rs2_dout;
-
-			switch(func3){
-				case F3_BEQ:
-					pc_next_sel = alu_out.zero ? 1 : 0;
-					break;
-				case F3_BNE:
-					pc_next_sel = alu_out.zero ? 0 : 1;
-					break;
-				case F3_BLT:
-					pc_next_sel = (!alu_out.zero && alu_out.sign) ? 1 : 0;
-					break;
-				case F3_BGE:
-					pc_next_sel = (alu_out.zero || !alu_out.sign) ? 1 : 0;
-					break;
-				case F3_BLTU:
-					pc_next_sel = (!alu_out.zero && alu_out.ucmp) ? 1 : 0;
-					break;
-				case F3_BGEU:
-					pc_next_sel = (alu_out.zero || !alu_out.ucmp) ? 1 : 0;
-					break;
-			}
-			if(pc_next_sel){
-				pc_next = pc_curr + (int32_t)imm;
-				D_PRINTF("PC", "Take branch");
-			}
-		}
-		else if(opcode == UJ_TYPE)
-			pc_next = pc_curr + (int32_t)imm;
-		else if(opcode == I_J_TYPE)
-			pc_next = alu_out.result;
-
-
 		// write back stage
+        
+
+
 		if(!(opcode == SB_TYPE || opcode == S_TYPE)){
 			if(opcode == UJ_TYPE || opcode == I_J_TYPE)
 				regfile_in.rd_din = pc_curr + 4;
@@ -288,16 +252,60 @@ int main (int argc, char *argv[]) {
 
 
 		// instruction fetch stage
+        //
+		// Program counter
+		pc_next = pc_curr + 4;
+
+		if(opcode == SB_TYPE){
+			uint8_t pc_next_sel = 0;
+			uint32_t r1 = regfile_out.rs1_dout;
+			uint32_t r2 = regfile_out.rs2_dout;
+
+			switch(func3){
+				case F3_BEQ:
+					pc_next_sel = alu_out.zero ? 1 : 0;
+					break;
+				case F3_BNE:
+					pc_next_sel = alu_out.zero ? 0 : 1;
+					break;
+				case F3_BLT:
+					pc_next_sel = (!alu_out.zero && alu_out.sign) 
+                        ? 1 : 0;
+					break;
+				case F3_BGE:
+					pc_next_sel = (alu_out.zero || !alu_out.sign) 
+                        ? 1 : 0;
+					break;
+				case F3_BLTU:
+					pc_next_sel = (!alu_out.zero && alu_out.ucmp) 
+                        ? 1 : 0;
+					break;
+				case F3_BGEU:
+					pc_next_sel = (alu_out.zero || !alu_out.ucmp) 
+                        ? 1 : 0;
+					break;
+			}
+			if(pc_next_sel){
+				pc_next = pc_curr + (int32_t)imm;
+				D_PRINTF("PC", "Take branch");
+			}
+		}
+		else if(opcode == UJ_TYPE)
+			pc_next = pc_curr + (int32_t)imm;
+		else if(opcode == I_J_TYPE)
+			pc_next = alu_out.result;
+
+        //Fetch
 		pc_curr = pc_next;
 		imem_in.addr = pc_curr;
 
 		imem_out = imem(imem_in, imem_data);
 
-		// no more instruction
-		if(!imem_out.dout)
-			break;
-		D_PRINTF("IF", "addr - 0x%08X", imem_in.addr);
-		D_PRINTF("IF", "dout - 0x%08X", imem_out.dout);
+//		// no more instruction
+//		if(!imem_out.dout)
+//			break;
+//		D_PRINTF("IF", "addr - 0x%08X", imem_in.addr);
+//		D_PRINTF("IF", "dout - 0x%08X", imem_out.dout);
 
 		//for(int i = 0; i < REG_WIDTH; i++){
 		for(int i = 0; i < 20; i++){
