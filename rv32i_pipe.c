@@ -5,8 +5,26 @@
  *
  * **************************************
  */
+#define DEBUG 0
 
 #include "rv32i.h"
+
+#define D_PRINTF(x, ...) \
+	do {\
+		if(DEBUG){ \
+		printf("%s: ", x);\
+		printf(__VA_ARGS__);\
+		printf("\n");\
+		}\
+	}while(0)\
+
+
+struct imem_output_t imem(struct imem_input_t imem_in, uint32_t *imem_data);
+struct regfile_output_t regfile(struct regfile_input_t regfile_in, uint32_t *reg_data, enum REG regwrite);
+struct alu_output_t alu(struct alu_input_t alu_in);
+uint8_t alu_control_gen(uint8_t opcode, uint8_t func3, uint8_t func7);
+struct dmem_output_t dmem(struct dmem_input_t dmem_in, uint8_t *dmem_data);
+
 
 int main (int argc, char *argv[]) {
 
@@ -100,13 +118,24 @@ int main (int argc, char *argv[]) {
 	struct pipe_mem_wb_t wb;
 
 	uint32_t cc = 2;	// clock count
+
+    //initialize
+    pc_curr = 0;
+
 	while (cc < CLK_NUM) {
 		printf("\n*** CLK : %d ***\n", cc);
 
 		// write back stage
         
+        //Get data from pipeline register
+        pc_curr = wb.pc_curr;
+        opcode = wb.opcode;
+        imm = wb.imm;
+        func3 = wb.func3;
+        alu_out = wb.alu_out;
+        dmem_out = wb.dmem_out;
 
-
+        // Main logic
 		if(!(opcode == SB_TYPE || opcode == S_TYPE)){
 			if(opcode == UJ_TYPE || opcode == I_J_TYPE)
 				regfile_in.rd_din = pc_curr + 4;
@@ -138,6 +167,16 @@ int main (int argc, char *argv[]) {
 
 
 		// memory stage
+        
+        // Get data from pipeline register
+        pc_curr = mem.pc_curr;
+        opcode = mem.opcode;
+        imm = mem.imm;
+        func3 = mem.func3;
+        regfile_out = mem.regfile_out;
+        alu_out = mem.alu_out;
+        
+        // Main Logic
 		if(opcode == S_TYPE || opcode == I_L_TYPE || opcode == I_J_TYPE){
 			dmem_in.addr = alu_out.result;
 			D_PRINTF("MEM", "[I]addr - %x", dmem_in.addr);
@@ -162,10 +201,26 @@ int main (int argc, char *argv[]) {
 			dmem_out = dmem(dmem_in, dmem_data);
 		}
 
+        // Update pipeline register
+        wb.pc_curr = pc_curr;
+        wb.opcode = opcode;
+        wb.imm = imm;
+        wb.func3 = func3;
+        wb.alu_out = alu_out;
+        wb.dmem_out = dmem_out;
+
 
 		// execution stage
-		alu_in.alu_control = alu_control_gen(opcode, func3, func7);
+        
+        //Get data from pipeline register
+        pc_curr = ex.pc_curr;
+        opcode = ex.opcode;
+        imm = ex.imm;
+        func3 = ex.func3;
+        func7 = ex.func7;
+        alu_in = ex.alu_in;
 
+        // Main logic
 		D_PRINTF("EX", "[I]in1 - %d", alu_in.in1);
 		D_PRINTF("EX", "[I]in2 - %d", (int32_t) alu_in.in2);
 		D_PRINTF("EX", "[I]alu_cont - %x", alu_in.alu_control);
@@ -176,11 +231,25 @@ int main (int argc, char *argv[]) {
 		D_PRINTF("EX", "[I]zero - %d", alu_out.zero);
 		D_PRINTF("EX", "[I]sign - %d", alu_out.sign);
 
+        // Update pipeline register
+        mem.pc_curr = pc_curr;
+        mem.opcode = opcode;
+        mem.imm = imm;
+        mem.func3 = func3;
+        mem.regfile_out = regfile_out;
+        mem.alu_out = alu_out; 
 
-		// instruction decode stage
+		//Instruction decode stage
+        
+        //Get data from pipeline register
+        pc_curr = id.pc_curr;
+        imem_out = id.imem_out;
+
+        //Main logic
 		opcode = imem_out.dout & 0x7F;
 
-		if (!(opcode == U_LU_TYPE || opcode == U_AU_TYPE ||opcode == UJ_TYPE))
+		if (!(opcode == U_LU_TYPE || opcode == U_AU_TYPE 
+                    || opcode == UJ_TYPE))
 			func3 = (imem_out.dout >> 12) & 0x7;
 		if (opcode == R_TYPE)
 			func7 = (imem_out.dout >> 25) & 0x7F;
@@ -250,16 +319,24 @@ int main (int argc, char *argv[]) {
 		else
 			alu_in.in2 = regfile_out.rs2_dout;
 
+        // Update pipeline register
+        ex.pc_curr = pc_curr;
+        ex.opcode = opcode;
+        ex.imm = imm;
+        ex.func3 = func3;
+        ex.func7 = func7;
+        ex.alu_in = alu_in; 
+
 
 		// instruction fetch stage
-        //
+        
 		// Program counter
 		pc_next = pc_curr + 4;
 
 		if(opcode == SB_TYPE){
 			uint8_t pc_next_sel = 0;
-			uint32_t r1 = regfile_out.rs1_dout;
-			uint32_t r2 = regfile_out.rs2_dout;
+//			uint32_t r1 = regfile_out.rs1_dout;
+//			uint32_t r2 = regfile_out.rs2_dout;
 
 			switch(func3){
 				case F3_BEQ:
@@ -301,12 +378,19 @@ int main (int argc, char *argv[]) {
 
 		imem_out = imem(imem_in, imem_data);
 
+        // Update pipeline register
+        id.pc_curr = pc_curr;
+        id.imem_out= imem_out;
+
+       
+
 //		// no more instruction
 //		if(!imem_out.dout)
 //			break;
 //		D_PRINTF("IF", "addr - 0x%08X", imem_in.addr);
 //		D_PRINTF("IF", "dout - 0x%08X", imem_out.dout);
 
+        // Print state
 		//for(int i = 0; i < REG_WIDTH; i++){
 		for(int i = 0; i < 20; i++){
 			printf("reg[%02d]: %08X\n", i, reg_data[i]);
