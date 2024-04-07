@@ -150,6 +150,7 @@ int main (int argc, char *argv[]) {
             func3 = wb.func3;
             alu_out = wb.alu_out;
             dmem_out = wb.dmem_out;
+            regfile_in.rd = wb.rd;
 
             // Main logic
             if(!(opcode == SB_TYPE || opcode == S_TYPE)){
@@ -175,8 +176,8 @@ int main (int argc, char *argv[]) {
                 else
                     regfile_in.rd_din = alu_out.result;
 
-                D_PRINTF("WB", "[I]rd - %d",regfile_in.rd);
-                D_PRINTF("WB", "[I]rd_din - %d",regfile_in.rd_din);
+                D_PRINTF("WB", "[I]rd - %d", regfile_in.rd);
+                D_PRINTF("WB", "[I]rd_din - %d", regfile_in.rd_din);
 
                 regfile_out = regfile(regfile_in, reg_data, WRITE);
             }
@@ -217,7 +218,7 @@ int main (int argc, char *argv[]) {
                 dmem_out = dmem(dmem_in, dmem_data);
             }
 
-            // Update pipeline register
+            //Update pipeline register
             wb.enable = 1;
             wb.pc_curr = pc_curr;
             wb.opcode = opcode;
@@ -225,6 +226,9 @@ int main (int argc, char *argv[]) {
             wb.func3 = func3;
             wb.alu_out = alu_out;
             wb.dmem_out = dmem_out;
+            //Doesn't use this stage
+            wb.rd = mem.rd;
+
         }
 
 		// execution stage
@@ -258,6 +262,7 @@ int main (int argc, char *argv[]) {
             mem.func3 = func3;
             mem.regfile_out = regfile_out;
             mem.alu_out = alu_out; 
+            mem.rd = ex.rd;
         }
 
 		//Instruction decode stage
@@ -352,6 +357,7 @@ int main (int argc, char *argv[]) {
             ex.func3 = func3;
             ex.func7 = func7;
             ex.alu_in = alu_in; 
+            ex.rd = regfile_in.rd;
         }
 		// instruction fetch stage
         
