@@ -133,16 +133,30 @@ int main (int argc, char *argv[]) {
 	struct pipe_ex_mem_t mem;
 	struct pipe_mem_wb_t wb;
 
+    // Hazard variable
+    uint8_t id_flush;
+    uint8_t id_stall;
+    uint8_t if_flush;
+    uint8_t if_stall;
+    uint8_t pc_write;
+    uint8_t branch_taken;
+
 	uint32_t cc = 0;	// clock count
 
     //initialize
     pc_next = 0;
+    id_flush = 0;
+    id_stall = 0;
+    if_flush = 0;
+    if_stall = 0;
+    pc_write = 1;
 
 	while (cc < CLK_NUM) {
 		printf("\n*** CLK : %d ***\n", cc);
 
 		//Write back stage
         if(wb.enable){
+            D_PRINTF("WB", "PC - ************[%x]************", wb.pc_curr);
             //Get data from pipeline register
             pc_curr = wb.pc_curr;
             opcode = wb.opcode;
@@ -177,7 +191,7 @@ int main (int argc, char *argv[]) {
                     regfile_in.rd_din = alu_out.result;
 
                 D_PRINTF("WB", "[I]rd - %d", regfile_in.rd);
-                D_PRINTF("WB", "[I]rd_din - %d", regfile_in.rd_din);
+                D_PRINTF("WB", "[I]rd_din - %X", regfile_in.rd_din);
 
                 regfile_out = regfile(regfile_in, reg_data, WRITE);
             }
@@ -185,6 +199,7 @@ int main (int argc, char *argv[]) {
 
 		// memory stage
         if(mem.enable){
+            D_PRINTF("MEM", "PC - ************[%x]************", mem.pc_curr);
             // Get data from pipeline register
             pc_curr = mem.pc_curr;
             opcode = mem.opcode;
@@ -200,7 +215,7 @@ int main (int argc, char *argv[]) {
                 dmem_in.din = regfile_out.rs2_dout;
                 D_PRINTF("MEM", "[I]din - %x", dmem_in.din);
                 dmem_in.func3 = func3;
-                D_PRINTF("MEM", "[I]func - %x", dmem_in.func3);
+                D_PRINTF("MEM", "[I]func3 - %x", dmem_in.func3);
 
                 if(opcode == S_TYPE){
                     dmem_in.mem_write = 1;
@@ -230,9 +245,14 @@ int main (int argc, char *argv[]) {
             wb.rd = mem.rd;
 
         }
+        else{
+            wb.enable = 0;
+        }
 
 		// execution stage
-        if(ex.enable){
+        if(ex.enable && !id_flush && !id_stall){
+            D_PRINTF("EX", "PC - ************[%x]************", ex.pc_curr);
+                
             //Get data from pipeline register
             pc_curr = ex.pc_curr;
             opcode = ex.opcode;
@@ -240,6 +260,7 @@ int main (int argc, char *argv[]) {
             func3 = ex.func3;
             func7 = ex.func7;
             alu_in = ex.alu_in;
+
 
             // Main logic
             alu_in.alu_control = alu_control_gen(opcode, func3, func7);
@@ -249,6 +270,48 @@ int main (int argc, char *argv[]) {
             D_PRINTF("EX", "[I]alu_cont - %x", alu_in.alu_control);
 
             alu_out = alu(alu_in);
+
+            int8_t pc_next_sel = 0;
+            if(opcode == SB_TYPE){
+                switch(func3){
+                    case F3_BEQ:
+                        pc_next_sel = alu_out.zero ? 1 : 0;
+                        break;
+                    case F3_BNE:
+                        pc_next_sel = alu_out.zero ? 0 : 1;
+                        break;
+                    case F3_BLT:
+                        pc_next_sel = (!alu_out.zero && alu_out.sign) 
+                            ? 1 : 0;
+                        break;
+                    case F3_BGE:
+                        pc_next_sel = (alu_out.zero || !alu_out.sign) 
+                            ? 1 : 0;
+                        break;
+                    case F3_BLTU:
+                        pc_next_sel = (!alu_out.zero && alu_out.ucmp) 
+                            ? 1 : 0;
+                        break;
+                    case F3_BGEU:
+                        pc_next_sel = (alu_out.zero || !alu_out.ucmp) 
+                            ? 1 : 0;
+                        break;
+                }
+            }
+
+            if(pc_next_sel){
+                pc_next = pc_curr + (int32_t)imm;
+                branch_taken = 1;
+            }
+            else if(opcode == UJ_TYPE){
+                pc_next = pc_curr + (int32_t)imm;
+                branch_taken = 1;
+            }
+            else if(opcode == I_J_TYPE){
+                pc_next = alu_out.result;
+                branch_taken = 1;
+            }
+            D_PRINTF("EX", "branch_taken - %d", branch_taken);
 
             D_PRINTF("EX", "[I]result - %d", alu_out.result);
             D_PRINTF("EX", "[I]zero - %d", alu_out.zero);
@@ -264,9 +327,14 @@ int main (int argc, char *argv[]) {
             mem.alu_out = alu_out; 
             mem.rd = ex.rd;
         }
+        else{
+            mem.enable = 0;
+        }
 
 		//Instruction decode stage
-        if(id.enable){
+        if(id.enable && !if_flush && !if_stall){
+            D_PRINTF("ID", "PC - ************[%x]************", id.pc_curr);
+
             //Get data from pipeline register
             pc_curr = id.pc_curr;
             imem_out = id.imem_out;
@@ -359,57 +427,45 @@ int main (int argc, char *argv[]) {
             ex.alu_in = alu_in; 
             ex.rd = regfile_in.rd;
         }
+        else{
+            ex.enable = 0;
+        }
+
 		// instruction fetch stage
+        D_PRINTF("IF", "PC - ****************************");
         
         //Fetch
-		pc_curr = pc_next;
+        if(pc_write){
+            pc_curr = pc_next;
+            pc_write = 1;
+        }
+
         D_PRINTF("IF", "pc_curr : %X", pc_curr);
 		imem_in.addr = pc_curr;
 
 		imem_out = imem(imem_in, imem_data);
         D_PRINTF("IF", "imem_out.dout: 0x%08X", imem_out.dout);
-        
+
+        uint8_t taken = 0;
+
 		// Program counter
-		pc_next = pc_curr + 4;
 
-		if(opcode == SB_TYPE){
-			uint8_t pc_next_sel = 0;
-//			uint32_t r1 = regfile_out.rs1_dout;
-//			uint32_t r2 = regfile_out.rs2_dout;
+        //Handle the flush signal
+        if(branch_taken){
+            //Flush
+            id_flush = 1;
+            if_flush = 1;
 
-			switch(func3){
-				case F3_BEQ:
-					pc_next_sel = alu_out.zero ? 1 : 0;
-					break;
-				case F3_BNE:
-					pc_next_sel = alu_out.zero ? 0 : 1;
-					break;
-				case F3_BLT:
-					pc_next_sel = (!alu_out.zero && alu_out.sign) 
-                        ? 1 : 0;
-					break;
-				case F3_BGE:
-					pc_next_sel = (alu_out.zero || !alu_out.sign) 
-                        ? 1 : 0;
-					break;
-				case F3_BLTU:
-					pc_next_sel = (!alu_out.zero && alu_out.ucmp) 
-                        ? 1 : 0;
-					break;
-				case F3_BGEU:
-					pc_next_sel = (alu_out.zero || !alu_out.ucmp) 
-                        ? 1 : 0;
-					break;
-			}
-			if(pc_next_sel){
-				pc_next = pc_curr + (int32_t)imm;
-				D_PRINTF("PC", "Take branch");
-			}
-		}
-		else if(opcode == UJ_TYPE)
-			pc_next = pc_curr + (int32_t)imm;
-		else if(opcode == I_J_TYPE)
-			pc_next = alu_out.result;
+            branch_taken = 0;
+
+            D_PRINTF("PC", "Take branch");
+        }
+        else{
+            //Not taken
+            pc_next = pc_curr + 4;
+            id_flush = 0;
+            if_flush = 0;
+        }
 
         D_PRINTF("PC", "pc_next : %X", pc_next);
 
