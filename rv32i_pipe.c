@@ -150,6 +150,7 @@ int main (int argc, char *argv[]) {
     if_flush = 0;
     if_stall = 0;
     pc_write = 1;
+    branch_taken = 0;
 
 	while (cc < CLK_NUM) {
 		printf("\n*** CLK : %d ***\n", cc);
@@ -164,36 +165,27 @@ int main (int argc, char *argv[]) {
             func3 = wb.func3;
             alu_out = wb.alu_out;
             dmem_out = wb.dmem_out;
-            regfile_in.rd = wb.rd;
+            regfile_in = wb.regfile_in;
+
 
             // Main logic
-            if(!(opcode == SB_TYPE || opcode == S_TYPE)){
-                if(opcode == UJ_TYPE || opcode == I_J_TYPE)
-                    regfile_in.rd_din = pc_curr + 4;
-                else if(opcode == U_LU_TYPE)
-                    regfile_in.rd_din = imm;
-                else if(opcode == U_AU_TYPE)
-                    regfile_in.rd_din = pc_curr + imm;
-                else if(opcode == R_TYPE || opcode == I_R_TYPE){
-                    if(func3 == F3_SLT){
-                        regfile_in.rd_din = alu_out.sign ? 1 : 0;
-                    }
-                    else if(func3 == F3_SLTU){
-                        regfile_in.rd_din = alu_out.ucmp ? 1 : 0;
-                    }
-                    else
-                        regfile_in.rd_din = alu_out.result;
-                }
-                else if(opcode == I_L_TYPE){
-                    regfile_in.rd_din = dmem_out.dout;
-                }
-                else
-                    regfile_in.rd_din = alu_out.result;
 
-                D_PRINTF("WB", "[I]rd - %d", regfile_in.rd);
-                D_PRINTF("WB", "[I]rd_din - %X", regfile_in.rd_din);
+            D_PRINTF("WB", "[I]rd - %d", regfile_in.rd);
+            D_PRINTF("WB", "[I]rd_din - %X", regfile_in.rd_din);
 
-                regfile_out = regfile(regfile_in, reg_data, WRITE);
+            regfile_out = regfile(regfile_in, reg_data, WRITE);
+            // Forwarding to EX stage (MEM hazard)
+            if(regfile_in.rd){
+                if(regfile_in.rd == ex.regfile_in.rs1){
+                    ex.alu_in.in1 = regfile_in.rd_din;
+                    D_PRINTF("WB", "rs1 forwarding");
+                }
+                if(ex.opcode == R_TYPE){
+                    if(regfile_in.rd == ex.regfile_in.rs2){
+                        ex.alu_in.in2 = regfile_in.rd_din;
+                        D_PRINTF("WB", "rs2 forwarding");
+                    }
+                }
             }
         }
 
@@ -207,6 +199,7 @@ int main (int argc, char *argv[]) {
             func3 = mem.func3;
             regfile_out = mem.regfile_out;
             alu_out = mem.alu_out;
+            regfile_in = mem.regfile_in;
             
             // Main Logic
             if(opcode == S_TYPE || opcode == I_L_TYPE || opcode == I_J_TYPE){
@@ -233,6 +226,22 @@ int main (int argc, char *argv[]) {
                 dmem_out = dmem(dmem_in, dmem_data);
             }
 
+            // Forwarding to EX stage (EX hazard)
+            if(!(opcode == SB_TYPE || opcode == S_TYPE)){
+                if(regfile_in.rd){
+                    if(regfile_in.rd == ex.regfile_in.rs1){
+                        ex.alu_in.in1 = regfile_in.rd_din;
+                        D_PRINTF("MEM", "rs1 forwarding %d", regfile_in.rd_din);
+                    }
+                    if(ex.opcode == R_TYPE){
+                        if(regfile_in.rd == ex.regfile_in.rs2){
+                            ex.alu_in.in2 = regfile_in.rd_din;
+                            D_PRINTF("MEM", "rs2 forwarding %d", regfile_in.rd_din);
+                        }
+                    }
+                }
+            }
+
             //Update pipeline register
             wb.enable = 1;
             wb.pc_curr = pc_curr;
@@ -241,8 +250,7 @@ int main (int argc, char *argv[]) {
             wb.func3 = func3;
             wb.alu_out = alu_out;
             wb.dmem_out = dmem_out;
-            //Doesn't use this stage
-            wb.rd = mem.rd;
+            wb.regfile_in = regfile_in;
 
         }
         else{
@@ -260,6 +268,7 @@ int main (int argc, char *argv[]) {
             func3 = ex.func3;
             func7 = ex.func7;
             alu_in = ex.alu_in;
+            regfile_in = ex.regfile_in;
 
 
             // Main logic
@@ -272,6 +281,7 @@ int main (int argc, char *argv[]) {
             alu_out = alu(alu_in);
 
             int8_t pc_next_sel = 0;
+
             if(opcode == SB_TYPE){
                 switch(func3){
                     case F3_BEQ:
@@ -311,8 +321,34 @@ int main (int argc, char *argv[]) {
                 pc_next = alu_out.result;
                 branch_taken = 1;
             }
+
+            if(!(opcode == SB_TYPE || opcode == S_TYPE)){
+                if(opcode == UJ_TYPE || opcode == I_J_TYPE)
+                    regfile_in.rd_din = pc_curr + 4;
+                else if(opcode == U_LU_TYPE)
+                    regfile_in.rd_din = imm;
+                else if(opcode == U_AU_TYPE)
+                    regfile_in.rd_din = pc_curr + imm;
+                else if(opcode == R_TYPE || opcode == I_R_TYPE){
+                    if(func3 == F3_SLT){
+                        regfile_in.rd_din = alu_out.sign ? 1 : 0;
+                    }
+                    else if(func3 == F3_SLTU){
+                        regfile_in.rd_din = alu_out.ucmp ? 1 : 0;
+                    }
+                    else
+                        regfile_in.rd_din = alu_out.result;
+                }
+                else if(opcode == I_L_TYPE){
+                    regfile_in.rd_din = dmem_out.dout;
+                }
+                else
+                    regfile_in.rd_din = alu_out.result;
+            }
+
             D_PRINTF("EX", "branch_taken - %d", branch_taken);
 
+            D_PRINTF("EX", "[I]rd_din - %d", regfile_in.rd_din);
             D_PRINTF("EX", "[I]result - %d", alu_out.result);
             D_PRINTF("EX", "[I]zero - %d", alu_out.zero);
             D_PRINTF("EX", "[I]sign - %d", alu_out.sign);
@@ -325,7 +361,7 @@ int main (int argc, char *argv[]) {
             mem.func3 = func3;
             mem.regfile_out = regfile_out;
             mem.alu_out = alu_out; 
-            mem.rd = ex.rd;
+            mem.regfile_in = regfile_in;
         }
         else{
             mem.enable = 0;
@@ -425,7 +461,7 @@ int main (int argc, char *argv[]) {
             ex.func3 = func3;
             ex.func7 = func7;
             ex.alu_in = alu_in; 
-            ex.rd = regfile_in.rd;
+            ex.regfile_in = regfile_in;
         }
         else{
             ex.enable = 0;
@@ -445,8 +481,6 @@ int main (int argc, char *argv[]) {
 
 		imem_out = imem(imem_in, imem_data);
         D_PRINTF("IF", "imem_out.dout: 0x%08X", imem_out.dout);
-
-        uint8_t taken = 0;
 
 		// Program counter
 

@@ -71,7 +71,7 @@
 
 
 // configs
-#define CLK_NUM 10
+#define CLK_NUM 20
 
 // Register
 enum REG {
@@ -146,7 +146,7 @@ struct pipe_id_ex_t {
 	uint32_t imm;
 	uint8_t func3;
 	uint8_t func7;
-	uint8_t rd;
+    struct regfile_input_t regfile_in;
     struct alu_input_t alu_in;
 	
 };
@@ -161,7 +161,7 @@ struct pipe_ex_mem_t {
     uint8_t opcode;
 	uint32_t imm;
 	uint8_t func3;
-	uint8_t rd;
+    struct regfile_input_t regfile_in;
     struct regfile_output_t regfile_out;
 
     //From EX
@@ -179,6 +179,7 @@ struct pipe_mem_wb_t {
 	uint32_t imm;
 	uint8_t func3;
 	uint8_t rd;
+    struct regfile_input_t regfile_in;
 
     //From EX
     struct alu_output_t alu_out; 
