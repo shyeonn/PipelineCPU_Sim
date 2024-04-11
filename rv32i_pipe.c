@@ -1,7 +1,7 @@
 /* **************************************
  * Module: top design of rv32i pipelined processor
  *
- * Author:
+ * Author: Sanghyeon Park
  *
  * **************************************
  */
@@ -76,6 +76,7 @@ int main (int argc, char *argv[]) {
 		printf("imem[%03d]: %08X\n", i, imem_data[i]);
 		i++;
 	}
+ // For hex input
  //	while (fscanf(f_imem, "%8x", &buf) != EOF) {
  //		imem_data[i] = buf;
  //		printf("imem[%03d]: %08X\n", i, imem_data[i]);
@@ -127,7 +128,7 @@ int main (int argc, char *argv[]) {
 	struct dmem_input_t dmem_in;
 	struct dmem_output_t dmem_out;
 
-	// pipeline registers
+	// Pipeline registers
 	struct pipe_if_id_t id;
 	struct pipe_id_ex_t ex;
 	struct pipe_ex_mem_t mem;
@@ -141,15 +142,14 @@ int main (int argc, char *argv[]) {
     uint8_t pc_write;
     uint8_t branch_taken;
     
-    //Result Var
+    // Result variable
     uint32_t hazard_count;
 
-	uint32_t cc = 0;	// clock count
+    //Clock count
+	uint32_t cc = 0;	
 
-    // Internal Forwarding
-    struct internal_forwarding i_fwd;
 
-    //initialize
+    // Initialize variable
     pc_next = 0;
     id_flush = 0;
     id_stall = 0;
@@ -157,20 +157,17 @@ int main (int argc, char *argv[]) {
     if_stall = 0;
     pc_write = 1;
     branch_taken = 0;
-    i_fwd.rs1_fwd = 0;
-    i_fwd.rs2_fwd = 0;
-    //Result
+
     hazard_count = 0;
 
 	while (cc < CLK_NUM) {
 		printf("\n*** CLK : %d ***\n", cc);
 
-		//Write back stage
+		// Writeback stage
         if(wb.enable){
             D_PRINTF("WB", "PC - ************[%x]************", wb.pc_curr);
-            //Get data from pipeline register
-
             if(!(wb.opcode == SB_TYPE || wb.opcode == S_TYPE)){
+                // Get data from pipeline register
                 pc_curr = wb.pc_curr;
                 opcode = wb.opcode;
                 imm = wb.imm;
@@ -180,7 +177,6 @@ int main (int argc, char *argv[]) {
                 regfile_in = wb.regfile_in;
 
                 // Main logic
-                 
                 if(opcode == I_L_TYPE){
                     regfile_in.rd_din = dmem_out.dout;
                 }
@@ -191,39 +187,21 @@ int main (int argc, char *argv[]) {
                 regfile_out = regfile(regfile_in, reg_data, WRITE);
 
                 // Forwarding to EX stage (MEM hazard)
-                //Check destination reg num is not Zero
+                // Check destination register num is not zero
                 if(regfile_in.rd){
                     if(regfile_in.rd == ex.regfile_in.rs1){
- //                        if(ex.opcode == S_TYPE){
- //                            //Internal Forwarding
- //                            i_fwd.rs1_fwd = 1;
- //                            i_fwd.rs1 = regfile_in.rd_din;
- //                            D_PRINTF("WB", "rs1 internal forwarding");
- //                        }
- //                        else{
-                            //External Forwarding
-                            ex.alu_in.in1 = regfile_in.rd_din;
-                            D_PRINTF("WB", "rs1 forwarding %d", regfile_in.rd_din);
- //                       }
+                        ex.alu_in.in1 = regfile_in.rd_din;
+                        D_PRINTF("WB", "rs1 forwarding %d", regfile_in.rd_din);
                     }
                     if(ex.opcode == R_TYPE && (regfile_in.rd == ex.regfile_in.rs2)){
-//                        if(ex.opcode == S_TYPE){
-//                            i_fwd.rs2_fwd = 1;
-//                            i_fwd.rs2 = regfile_in.rd_din;
-//                            //Internal Forwarding
-//                            D_PRINTF("WB", "rs2 internal forwarding");
-//                        }
-//                        else{
-                            //External Forwarding
-                            ex.alu_in.in2 = regfile_in.rd_din;
-                            D_PRINTF("WB", "rs2 forwarding %d", regfile_in.rd_din);
-//                        }
+                        ex.alu_in.in2 = regfile_in.rd_din;
+                        D_PRINTF("WB", "rs2 forwarding %d", regfile_in.rd_din);
                     }
                 }
             }
         }
 
-		// memory stage
+		// Memory stage
         if(mem.enable){
             D_PRINTF("MEM", "PC - ************[%x]************", mem.pc_curr);
             // Get data from pipeline register
@@ -304,11 +282,11 @@ int main (int argc, char *argv[]) {
             wb.enable = 0;
         }
 
-		// execution stage
+		// Execute stage
         if(ex.enable && !id_flush && !id_stall){
             D_PRINTF("EX", "PC - ************[%x]************", ex.pc_curr);
                 
-            //Get data from pipeline register
+            // Get data from pipeline register
             pc_curr = ex.pc_curr;
             opcode = ex.opcode;
             imm = ex.imm;
@@ -329,6 +307,7 @@ int main (int argc, char *argv[]) {
 
             int8_t pc_next_sel = 0;
 
+            // Check the branch is taken
             if(opcode == SB_TYPE){
                 switch(func3){
                     case F3_BEQ:
@@ -356,6 +335,7 @@ int main (int argc, char *argv[]) {
                 }
             }
 
+            // When the branch is taken, Calculate taken address
             if(pc_next_sel){
                 pc_next = pc_curr + (int32_t)imm;
                 branch_taken = 1;
@@ -369,6 +349,7 @@ int main (int argc, char *argv[]) {
                 branch_taken = 1;
             }
 
+            //Calculate register write value
             if(!(opcode == SB_TYPE || opcode == S_TYPE)){
                 if(opcode == UJ_TYPE || opcode == I_J_TYPE)
                     regfile_in.rd_din = pc_curr + 4;
@@ -394,7 +375,6 @@ int main (int argc, char *argv[]) {
             }
 
             D_PRINTF("EX", "branch_taken - %d", branch_taken);
-
             D_PRINTF("EX", "[I]rd_din - %d", regfile_in.rd_din);
             D_PRINTF("EX", "[I]result - %d", alu_out.result);
             D_PRINTF("EX", "[I]zero - %d", alu_out.zero);
@@ -415,15 +395,15 @@ int main (int argc, char *argv[]) {
             mem.enable = 0;
         }
 
-		//Instruction decode stage
+		// Instruction decode stage
         if(id.enable && !if_flush && !if_stall){
             D_PRINTF("ID", "PC - ************[%x]************", id.pc_curr);
 
-            //Get data from pipeline register
+            // Get data from pipeline register
             pc_curr = id.pc_curr;
             imem_out = id.imem_out;
 
-            //Main logic
+            // Main logic
             opcode = imem_out.dout & 0x7F;
             D_PRINTF("ID", "[I]opcode- %x", opcode);
 
@@ -443,24 +423,13 @@ int main (int argc, char *argv[]) {
                 D_PRINTF("ID", "[I]rs2 - %d", regfile_in.rs2);
             }
 
+            // Register Read
             regfile_out = regfile(regfile_in, reg_data, READ);
-
-//            //Check Internal forwarding
-//            if(i_fwd.rs1_fwd){
-//                regfile_out.rs1_dout = i_fwd.rs1;
-//                D_PRINTF("ID", "Get internel forwarding data - rs1");
-//                i_fwd.rs1_fwd = 0;
-//            }
-//            if(i_fwd.rs2_fwd){
-//                regfile_out.rs2_dout = i_fwd.rs2;
-//                D_PRINTF("ID", "Get internel forwarding data - rs2");
-//                i_fwd.rs2_fwd = 0;
-//            }
 
 
             D_PRINTF("ID", "[O]rs1_dout - %d", regfile_out.rs1_dout);
             if (opcode == SB_TYPE || opcode == R_TYPE || opcode == S_TYPE)
-            D_PRINTF("ID", "[O]rs2_dout - %d", regfile_out.rs2_dout);
+                D_PRINTF("ID", "[O]rs2_dout - %d", regfile_out.rs2_dout);
             
             alu_in.in1 = regfile_out.rs1_dout;
 
@@ -476,24 +445,23 @@ int main (int argc, char *argv[]) {
                 imm = imem_out.dout & ~0xFFF;
             else if (opcode == UJ_TYPE){
                 imm = 0;
-
                 imm = imm | ((imem_out.dout >> 31) & 0x1) << 20;
                 imm = imm | ((imem_out.dout >> 21) & 0x3FF) << 1;
                 imm = imm | ((imem_out.dout >> 20) & 0x1) << 11;
                 imm = imm | (imem_out.dout & 0xFF000);
 
-                //Input is a negative number
+                // When the input is a negative number
                 if(imm & 0x100000)
                     imm = imm | 0xFFE00000;
             }
             else if (opcode == SB_TYPE){
                 imm = 0;
-
                 imm = imm | ((imem_out.dout >> 31) & 0x1) << 12;
                 imm = imm | ((imem_out.dout >> 25) & 0x3F) << 5;
                 imm = imm | ((imem_out.dout >> 8) & 0xF) << 1;
                 imm = imm | ((imem_out.dout >> 7) & 0x1) << 11;
-                //Input is a negative number
+
+                // When the input is a negative number
                 if(imm & 0x1000)
                     imm = imm | 0xFFFFE000;
 
@@ -501,7 +469,6 @@ int main (int argc, char *argv[]) {
             }
             else if (opcode == S_TYPE){
                 imm = 0;
-
                 imm = imm | ((imem_out.dout >> 7) & 0x1F);
                 imm = imm | ((imem_out.dout >> 25) & 0x7F) << 5;
                 //Input is a negative number
@@ -515,9 +482,9 @@ int main (int argc, char *argv[]) {
             D_PRINTF("ID", "[I]imm - %d", imm);
 
             //Hazard Detection Unit
-            
             if(mem.opcode == I_L_TYPE){
-                if(mem.regfile_in.rd == regfile_in.rs1 || mem.regfile_in.rd == regfile_in.rs2){
+                if(mem.regfile_in.rd == regfile_in.rs1 || 
+                        mem.regfile_in.rd == regfile_in.rs2){
                     D_PRINTF("ID", "Hazard Detect: [%x]", mem.pc_curr);
                     //id_stall = 1;
                     if_stall = 1;
@@ -543,9 +510,7 @@ int main (int argc, char *argv[]) {
             if_stall = 0;
         }
 
-		// instruction fetch stage
-        
-        //Fetch
+		// Instruction fetch stage
         if(pc_write){
             D_PRINTF("IF", "PC - ****************************");
             pc_curr = pc_next;
@@ -558,7 +523,7 @@ int main (int argc, char *argv[]) {
 
             // Program counter
 
-            //Handle the flush signal
+            // Handle the flush signal
             if(branch_taken){
                 //Flush
                 id_flush = 1;
@@ -574,8 +539,8 @@ int main (int argc, char *argv[]) {
                 id_flush = 0;
                 if_flush = 0;
             }
-            D_PRINTF("PC", "pc_next : %X", pc_next);
 
+            D_PRINTF("PC", "pc_next : %X", pc_next);
 
             // Update pipeline register
             id.enable = 1;
@@ -585,16 +550,6 @@ int main (int argc, char *argv[]) {
         else{
             pc_write = 1;
         }
-
-//        D_PRINTF("PC", "pre_pc_wite : %X", pre_pc_write);
-//        pc_write = pre_pc_write;
-//        pre_pc_write = 1;
-
-//		// no more instruction
-//		if(!imem_out.dout)
-//			break;
-//		D_PRINTF("IF", "addr - 0x%08X", imem_in.addr);
-//		D_PRINTF("IF", "dout - 0x%08X", imem_out.dout);
 
         // Print state
 		//for(int i = 0; i < REG_WIDTH; i++){
@@ -612,6 +567,7 @@ int main (int argc, char *argv[]) {
 		cc++;
 	}
 
+    // Result
     printf("Hazard count : %d\n", hazard_count);
 
 	free(reg_data);

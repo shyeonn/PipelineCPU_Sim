@@ -188,12 +188,3 @@ struct pipe_mem_wb_t {
     //From MEM
     struct dmem_output_t dmem_out;
 };
-
-struct internal_forwarding {
-    //Enable forwarding
-    uint8_t rs1_fwd;
-    uint8_t rs2_fwd;
-    //Data
-	uint32_t rs1;
-	uint32_t rs2;
-};
