@@ -71,7 +71,7 @@
 
 
 // configs
-#define CLK_NUM 20
+#define CLK_NUM 45
 
 // Register
 enum REG {
@@ -148,6 +148,7 @@ struct pipe_id_ex_t {
 	uint8_t func7;
     struct regfile_input_t regfile_in;
     struct alu_input_t alu_in;
+    struct regfile_output_t regfile_out;
 	
 };
 
@@ -186,4 +187,13 @@ struct pipe_mem_wb_t {
 
     //From MEM
     struct dmem_output_t dmem_out;
+};
+
+struct internal_forwarding {
+    //Enable forwarding
+    uint8_t rs1_fwd;
+    uint8_t rs2_fwd;
+    //Data
+	uint32_t rs1;
+	uint32_t rs2;
 };
