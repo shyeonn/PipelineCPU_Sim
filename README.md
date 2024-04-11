@@ -3,7 +3,7 @@
 ./compile.sh
 ```
 
-# Execute
+# Execute Simulator
 ```
 ./Pipeline_CPU imem.mem dmem.mem
 ```
