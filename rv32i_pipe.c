@@ -5,7 +5,7 @@
  *
  * **************************************
  */
-#define DEBUG 1
+#define DEBUG 0
 
 #include "rv32i.h"
 
@@ -143,10 +143,12 @@ int main (int argc, char *argv[]) {
     uint8_t branch_taken;
     
     // Result variable
-    uint32_t hazard_count;
+    uint32_t hazard_cnt;
+    uint32_t inst_cnt;
+    uint32_t branch_cnt;
 
     //Clock count
-	uint32_t cc = 0;	
+	uint32_t cc = 2;	
 
 
     // Initialize variable
@@ -165,7 +167,9 @@ int main (int argc, char *argv[]) {
 
 	
 
-    hazard_count = 0;
+    hazard_cnt = 0;
+	inst_cnt = 0;
+    branch_cnt = 0;
 
 	while (cc < CLK_NUM) {
 		printf("\n*** CLK : %d ***\n", cc);
@@ -206,6 +210,7 @@ int main (int argc, char *argv[]) {
                     }
                 }
             }
+			inst_cnt++;
         }
 
 		// Memory stage
@@ -497,7 +502,7 @@ int main (int argc, char *argv[]) {
                     if_stall = 1;
                     //pre_pc_write = 0;
                     pc_write = 0;
-                    hazard_count++;
+                    hazard_cnt++;
                 }
             }
 
@@ -537,6 +542,7 @@ int main (int argc, char *argv[]) {
                 if_flush = 1;
 
                 branch_taken = 0;
+				branch_cnt++;
 
                 D_PRINTF("PC", "Take branch");
             }
@@ -575,7 +581,9 @@ int main (int argc, char *argv[]) {
 	}
 
     // Result
-    printf("Hazard count : %d\n", hazard_count);
+    printf("Hazard count : %d\n", hazard_cnt);
+    printf("Branch count : %d\n", branch_cnt);
+    printf("Instruction count : %d\n", inst_cnt);
 
 	free(reg_data);
 	free(imem_data);

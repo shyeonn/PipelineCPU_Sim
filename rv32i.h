@@ -71,7 +71,7 @@
 
 
 // configs
-#define CLK_NUM 45
+#define CLK_NUM 1000000
 
 // Register
 enum REG {
