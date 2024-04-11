@@ -158,6 +158,13 @@ int main (int argc, char *argv[]) {
     pc_write = 1;
     branch_taken = 0;
 
+	wb.enable = 0;
+	mem.enable = 0;
+	ex.enable = 0;
+	id.enable = 0;
+
+	
+
     hazard_count = 0;
 
 	while (cc < CLK_NUM) {
